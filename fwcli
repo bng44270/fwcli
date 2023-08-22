@@ -1,0 +1,11 @@
+#!/bin/bash
+
+BASEDIR="$(dirname $0)/.."
+RCFILE="$BASEDIR/share/fwcli.rc"
+
+sudo -v
+if [ $? -eq 1 ]; then
+	exit 1
+fi
+
+sudo bash --rcfile $RCFILE
