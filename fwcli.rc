@@ -16,16 +16,23 @@
 #
 ##############################################
 
-BASEDIR="$HOME/.iptcli"
+BASEDIR="$HOME/.fwcli"
 [[ ! -d $BASEDIR ]] && /usr/bin/mkdir $BASEDIR
 cd $BASEDIR
 
 PATH=""
-HISTFILE="~/.iptcli_history"
+HISTFILE="~/.fwcli_history"
 HISTTIMEFORMAT="%m/%d/%Y %H:%M:%S "
 
 PS1="iptables > "
 
+alias cmd_not_found='echo "Command not found"'
+
+alias cd='cmd_not_found'
+
+hash -p /usr/bin/mv mv
+hash -p /usr/bin/ls listdir
+hash -p /usr/bin/strace strace
 hash -p /usr/bin/grep grep
 hash -p /usr/bin/sed sed
 hash -p /usr/bin/awk awk
@@ -497,7 +504,7 @@ traffic() {
 	if [ -n "$1" ]; then
 		if [ "$1" == "capture" ]; then
 			if [ "$2" == "list" ]; then
-				CAPFILES="$(ls /tmp/*pcap 2>/dev/null)"
+				CAPFILES="$(listdir *pcap 2>/dev/null)"
 				
 				if [ $? -eq 0 ]; then
 					echo "$CAPFILES"
@@ -512,10 +519,33 @@ traffic() {
 					OUTFILE="$(sed 's/^.*file[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
 					
 					tcpdump -i $IFNAME -s 65535 -w /tmp/$OUTFILE.pcap
-					
-					chmod 777 /tmp.$OUTFILE.pcap
-					
-					echo "Capture saved to /tmp/$OUTFILE.pcap"
+
+					if [ -f $BASEDIR/$OUTFILE.pcap ]; then
+						echo "$OUTFILE already exists."
+						
+						while true; do
+							read -n1 -s -p "[R]ename, [O]verwrite, or [C]ancel" nextop
+
+							if [ $nextop =~ [Rr] ]; then
+								read -p "New filename: " newfile
+								if [ -z "$newfile" ]; then
+									continue
+								else
+									mv /tmp/$OUTFILE.pcap $BASEDIR/$newfile.pcap
+									break
+								fi
+							elif [ $nextop =~ [Oo] ]; then
+								mv /tmp/$OUTFILE.pcap $BASEDIR/
+								break
+							elif [ $nextop =~ [Cc] ]; then
+								break
+							else
+								continue
+							fi
+						done
+					else
+						mv /tmp/$OUTFILE.pcap $BASEDIR/
+					fi
 				else
 					echo "Must specify interface and output file"
 				fi
