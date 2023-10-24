@@ -1,16 +1,16 @@
 ##############################################
 #
-# iptcli.rc - Bash resoruce file to facilitate iptables auto-complete interface
+# fwcli.rc - Bash resoruce file to facilitate iptables auto-complete interface
 #
 # Usage:
 #
 #    1. Create iptcli alias:
 #
-#        alias iptcli="bash --rcfile /path/to/.iptcli.rc"
+#        alias fwcli="bash --rcfile /path/to/iptcli.rc"
 #    
 #    2. Open CLI:
 #
-#        iptcli
+#        fwcli
 #
 #    3. Use the built in 'help' commands
 #
