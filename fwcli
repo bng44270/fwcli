@@ -3,9 +3,10 @@
 BASEDIR="$(dirname $0)/.."
 RCFILE="$BASEDIR/share/fwcli.rc"
 
-sudo -v
-if [ $? -eq 1 ]; then
-	exit 1
-fi
+ISROOT="$(whoami | grep '^root$')"
 
-sudo bash --rcfile $RCFILE
+if [ -n "$ISROOT" ]; then
+	bash --rcfile $RCFILE
+else
+	echo "Root access is required"
+fi
