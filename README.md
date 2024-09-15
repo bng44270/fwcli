@@ -5,4 +5,4 @@ Auto-complete enabled CLI for iptables based on Bash
 1. run ```configure```
 2. Run ```make config```
 3. Run ```make install```
-4. Run ```fwcli``` (requires sudo access)
+4. Run ```sudo fwcli``` (requires sudo access)
