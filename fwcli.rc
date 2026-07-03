@@ -2,17 +2,6 @@
 #
 # fwcli.rc - Bash resoruce file to facilitate iptables auto-complete interface
 #
-# Usage:
-#
-#    1. Create iptcli alias:
-#
-#        alias fwcli="bash --rcfile /path/to/iptcli.rc"
-#    
-#    2. Open CLI:
-#
-#        fwcli
-#
-#    3. Use the built in 'help' commands
 #
 ##############################################
 
@@ -29,11 +18,11 @@ PS1="iptables > "
 alias cmd_not_found='echo "Command not found"'
 
 alias cd='cmd_not_found'
+alias pwd='cmd_not_found'
 
 hash -p /usr/bin/mv mv
 hash -p /usr/bin/ls listdir
-hash -p /usr/bin/strace strace
-hash -p /usr/bin/grep grep
+hash -p /usr/bin/grep _grep
 hash -p /usr/bin/sed sed
 hash -p /usr/bin/awk awk
 hash -p /usr/bin/cat cat
@@ -56,32 +45,27 @@ hash -p /usr/bin/dig dig
 
 alias help="_iptcli_help"
 
-IPT_TABLES=(nat filter mangle raw security)
-
 _iptcli_help() {
 	echo "Available tables:"
-	for TAB in ${IPT_TABLES[@]}; do
-		echo "   $TAB"
-	done
+	echo "   nat"
+	echo "   filter"
+	echo "   mangle"
+	echo "   raw"
+	echo "   security"
 	echo ""
 	echo "Syntax:"
-	echo "   <table> <action> [<chain>] [<option>] [<format>]"
+	echo "    <action> [<chain>] [<option>] [<format>]"
 	echo ""
 	echo "   <action> = append|check|delete|insert|replace|list|flush|zero|newchain|delchain|dump*"
 	echo "   <option> = interface|protocol|source|destination|match|destport|jump"
 	echo "   <format> = raw|xml (used for \"dump\" only"
 	echo ""
 	echo "Other commands:"
-	echo "   iface <list | up | down | ipv4 | ipv6> [<interface> | all]"
-	echo "      all = only used for list"
+	echo "   iface < list [mac | ipv4 | ipv6] | [up | down  detail ] [interface] >"
 	echo ""
-	echo "   connection [list | test] [<list-opts> | <test-opts>]"
-	echo "      list-opts = tcp tcp6 udp udp6 multicast"
-	echo "      test-opts = destaddr destport timeout"
+	echo "   connection < list [tcp | tcp6 | udp | udp6 | multicast] | test destaddr [ip-addr] destport [port] timeout [number] >"
 	echo ""
-	echo "   traffic [stats | capture] [list] interface <ifname> [file <filename>]"
-	echo "      file = only used for capture"
-	echo "      list = only used for capture"
+	echo "   traffic capture [ list | interface <ifname> file <filename> ]"
 	echo ""
 	echo "   trace hops <hop-count> addr <hostname/IP>"
 	echo ""
@@ -89,31 +73,57 @@ _iptcli_help() {
 	echo ""
 	echo "   calc <cidr-notation>"
 	echo "   ping <address>"
-	echo "   contains <expression>"
+	echo ""
+	echo "   grep <expression>"
 	echo "   column <number>"
 	echo "   count <expression>"
 	echo ""
 }
 
+nat() {
+	_iptcli_backend nat $@
+}
+
+filter() {
+	_iptcli_backend filter $@
+}
+
+mangle() {
+	_iptcli_backend mangle $@
+}
+
+raw() {
+	_iptcli_backend raw $@
+}
+
+security() {
+	_iptcli_backend security $@
+}
+
 _iptcli_backend() {
 	if [ -n "$1" ]; then
-		if [ -n "$(/usr/bin/grep "dump[ \t]*$" <<< "$@")" ]; then
-			iptables-save -t $1 | grep '^-' | sed 's/-A /append /;
-				s/ -I / insert /;
-				s/ -i / ifin /;
-				s/ -o / ifout /;
-				s/ -p / protocol /;
-				s/ -s / source /;
-				s/ -d / destination /;
-				s/ -m comment --comment / comment /;
-				s/ -m / match /;
-				s/ --dport / destport /;
-				s/ -j / jump /;
-				s/ -n / noresolve /'
-		elif [ -n "$(/usr/bin/grep "dump xml$" <<< "$@")" ]; then
-			iptables-save -t $1 | iptables-xml
-		elif [ -n "$(/usr/bin/grep "dump raw$" <<< "$@")" ]; then
-			iptables-save -t $1
+		if [ "$2" == "dump" ]; then
+		#-n "$(/usr/bin/grep "dump[ \t]*$" <<< "$@")" ]; then
+			if [ -z "$3" ]; then
+				iptables-save -t $1 | grep '^-' | sed 's/-A /append /;
+					s/ -I / insert /;
+					s/ -i / ifin /;
+					s/ -o / ifout /;
+					s/ -p / protocol /;
+					s/ -s / source /;
+					s/ -d / destination /;
+					s/ -m comment --comment / comment /;
+					s/ -m / match /;
+					s/ --dport / destport /;
+					s/ -j / jump /;
+					s/ -n / noresolve /'
+			elif [ "$3" == "xml" ]; then
+				iptables-save -t $1 | iptables-xml
+			elif [ "$3" == "raw" ]; then
+				iptables-save -t $1
+			else
+				echo "Invalid option ($2)"
+			fi
 		else
 			iptables $(sed '
 				s/^/-t /;
@@ -125,8 +135,8 @@ _iptcli_backend() {
 				s/ replace / -R /;
 				s/ list[ ]*/ -L /;
 				s/ noresolve[ ]*/ -n /;
-				s/ flush / -F /;
-				s/ zero / -Z /;
+				s/ flush[ ]*/ -F /;
+				s/ zero[ ]*/ -Z /;
 				s/ newchain / -N /;
 				s/ delchain / -X /;
 				s/ ifin / -i /;
@@ -140,7 +150,7 @@ _iptcli_backend() {
 			' <<< "$@")
 		fi
 	else
-		echo "usage:  $FUNCNAME <action> [<chain>] [<option>] [<format>]"
+		echo "usage:  $1 <action> [<chain>] [<option>] [<format>]"
 		echo ""
 		echo "  <action> = append|check|delete|insert|replace|list|flush|zero|newchain|delchain|dump*"
 		echo "  <option> = interface|protocol|source|destination|match|destport|jump"
@@ -174,40 +184,75 @@ _in_array() {
 	fi
 }
 
+_in_str() {
+	SRCH="$(cat -)"
+	RESULT=1
+	for item in $@; do
+		[[ "$item" == "$SRCH" ]]
+		if [ $? -eq 0 ]; then
+			RESULT=0
+			break
+		fi
+	done
+	
+	return $RESULT
+}
+
 _iptcli_complete() {
-	ACTIONS=(append check delete insert replace list flush zero newchain delchain dump)
-	OPTIONS=(ifin ifout protocol source destination match destport jump comment)
-	[[ -n "${COMP_WORDS[0]}" ]] && CHAINS=($(iptables-save -t ${COMP_WORDS[0]} 2> /dev/null | awk '/^:/ { printf("%s ",gensub(/^:/,"","g",$1)); }'))
+	ACTIONS="append check delete insert replace list flush zero newchain delchain dump"
+	CHAINS="PREROUTING INPUT FORWARD OUTPUT POSTROUTING"
+	OPTIONS="ifin ifout protocol source destination match destport jump comment"
 	
 	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
+	LASTCMD2="${COMP_WORDS[$COMP_CWORD-2]}"
 	
-	_in_array ${IPT_TABLES[@]} <<< "$LASTCMD"
+	_in_str $OPTIONS <<< "$LASTCMD2"
 	if [ $? -eq 0 ]; then
-		COMPREPLY=($(_str_begin_array ${ACTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
+		COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 		return 0
-	fi
-	
-	_in_array ${ACTIONS[@]} <<< "$LASTCMD"
-	if [ $? -eq 0 ]; then
-		if [ "$LASTCMD" == "list" ]; then
-			COMPREPLY=($(_str_begin_array noresolve <<< "${COMP_WORDS[$COMP_CWORD]}"))
-			return 0
-		elif [ "$LASTCMD" == "dump" ]; then
-			COMPREPLY=($(_str_begin_array raw xml <<< "${COMP_WORDS[$COMP_CWORD]}"))
-			return 0
+	else
+		_in_str $OPTIONS <<< "$LASTCMD"
+		if [ $? -eq 0 ]; then
+			if [ "$LASTCMD" == "protocol" ]; then
+				COMPREPLY=( $(compgen -W "tcp udp" -- "${COMP_WORDS[$COMP_CWORD]}") )
+				return 0
+			elif [ "$LASTCMD" == "ifin" ] || [ "$LASTCMD" == "ifout" ]; then
+				IFLIST="$(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { if ($1 != "lo") { print $1 } }')"
+				COMPREPLY=( $(compgen -W "$IFLIST" -- "${COMP_WORDS[$COMP_CWORD]}") )
+				return 0
+			elif [ "$LASTCMD" == "jump" ]; then
+				COMPREPLY=( $(compgen -W "ACCEPT DROP REJECT RETURN" -- "${COMP_WORDS[$COMP_CWORD]}") )
+				return 0
+			else
+				return 0
+			fi
 		else
-			COMPREPLY=($(_str_begin_array ${CHAINS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-			return 0
+			_in_str $CHAINS <<< "$LASTCMD"
+			if [ $? -eq 0 ]; then
+				COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+				return 0
+			else
+				_in_str $ACTIONS <<< "$LASTCMD"
+				if [ $? -eq 0 ]; then
+					if [ "$LASTCMD" == "list" ]; then
+						COMPREPLY=( $(compgen -W "noresolve" -- "${COMP_WORDS[$COMP_CWORD]}") )
+						return 0
+					elif [ "$LASTCMD" == "dump" ]; then
+						COMPREPLY=( $(compgen -W "raw xml" -- "${COMP_WORDS[$COMP_CWORD]}") )
+						return 0
+					elif [ "$LASTCMD" == "flush" ] || [ "$LASTCMD" == "zero" ] || [ "$LASTCMD" == "newchain" ] || [ "$LASTCMD" == "delchain" ]; then
+						return 0
+					else 
+						COMPREPLY=( $(compgen -W "$CHAINS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+						return 0
+					fi
+				else
+					COMPREPLY=( $(compgen -W "$ACTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+					return 0
+				fi
+			fi
 		fi
 	fi
-	
-	_in_array ${OPTIONS[@]} <<< "$LASTCMD"
-	if [ $? -eq 0 ]; then
-		return 0
-	fi
-	
-	COMPREPLY=($(_str_begin_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-	return 0
 }
 
 _get_ifip4() {
@@ -270,97 +315,120 @@ _if2cidr() {
 		}' <<< "$MASK"
 }
 
-
-
 _iface_complete() {
-	ACTIONS=(list up down ipv4 ipv6)
+	ACTIONS="list up down detail"
+	LISTOPTS="mac ip4 ip6"
+	IFOPTS="$(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { if ($1 != "lo") { print $1 } }')"
+	
 	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
 	
-	_in_array ${ACTIONS[@]} <<< "${COMP_WORDS[1]}"
-	if [ $? -eq 0 ]; then
-		if [ "$LASTCMD" == "list" ]; then
-			COMPREPLY=($(_str_begin_array all <<< "${COMP_WORDS[$COMP_CWORD]}"))
-			return 0
-		else
-			_in_array ${ACTIONS[@]} <<< "$LASTCMD"
-			if [ $? -eq 0 ]; then
+	_in_str $LISTOPTS <<< "$LASTCMD"
+	ISLIST=$?
+	
+	_in_str $IFOPTS <<< "$LASTCMD"
+	ISIFACE=$?
+	
+	if [ $ISLIST -eq 0 ] || [ $ISIFACE -eq 0 ]; then
+		return 0
+	else
+		_in_str $ACTIONS <<< "$LASTCMD"
+		if [ $? -eq 0 ]; then
+			if [ "$LASTCMD" == "list" ]; then
+				COMPREPLY=( $(compgen -W "$LISTOPTS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 				return 0
 			else
-				COMPREPLY=($(_str_begin_array ${ACTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))	
+				COMPREPLY=( $(compgen -W "$IFOPTS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 				return 0
 			fi
+		else
+			COMPREPLY=( $(compgen -W "$ACTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+			return 0
 		fi
-	else
-		COMPREPLY=($(_str_begin_array ${ACTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-		return 0
 	fi
-	
-	COMPREPLY=($(_str_begin_array ${ACTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-	return 0
 }
 
 iface() {
 	if [ -n "$1" ]; then
-		IFLIST=($(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { print $1 }'))
+		IFLIST="$(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { if ($1 != "lo") { print $1 } }')"
 		
 		if [ "$1" == "list" ]; then
-			if [ "$2" == "all" ]; then
-				ifconfig
-			elif [ -n "$2" ]; then
-				_in_array ${IFLIST[@]} <<< "$2"
-	
-				if [ $? -eq 0 ]; then
-					ifconfig $2
-				else
-					echo "Invalid interface ($2)"
-				fi
-			else
-				for IFACE in ${IFLIST[@]}; do
-					echo "$IFACE"
+			if [ "$2" == "mac" ]; then
+				awk 'BEGIN { FS=" " } { printf("%15-s\t%19-s\t%9-s\t%9-s\t%9-s\t%9-s\n",$1,$2,$3,$4,$5,$6); }' <<< "Name Mac RX_packet RX_bytes TX_packet TX_bytes"
+				for idx in $(seq 0 $[ ${#IFLIST[@]} - 1 ]); do
+					ifconfig ${IFLIST[$idx]} | awk -v ifname="${IFLIST[$idx]}" 'BEGIN {
+						mac = "";
+						rxpack = "";
+						txpack = "";
+						rxbyte = "";
+						txbyte = "";
+					}
+					/^[ \t]+ether/ {
+						mac = gensub(/^.*ether[ \t]+([^ \t]+)[ \t]+.*$/,"\\1","g",$0);
+					}
+					/^[ \t]+RX packets/ {
+						rxpack = gensub(/^.*packets[ \t]+([0-9]]+)[ \t]+.*$/,"\\1","g",$0);
+						rxbyte = gensub(/^.*bytes[ \t]+([0-9]+)[ \t]+.*$/,"\\1","g",$0);
+					}
+					/^[ \t]+TX packets/ {
+						txpack = gensub(/^.*packets[ \t]+([0-9]+)[ \t]+.*$/,"\\1","g",$0);
+						txbyte = gensub(/^.*bytes[ \t]+([0-9]+)[ \t]+.*$/,"\\1","g",$0);
+					}
+					END {
+						printf("%15-s\t%19-s\t%9-d\t%9-d\t%9-d\t%9-d\n",ifname,mac,rxpack,rxbyte,txpack,txbyte);
+					}'
 				done
-			fi
-		elif [ "$1" == "ipv6" ]; then
-			if [ -n "$2" ]; then
-				_in_array ${IFLIST[@]} <<< "$2"
-	
-				if [ $? -eq 0 ]; then
-					echo "$(_get_ifipv6 $2)/$(_get_ifprefixv6 $2)"
-				else
-					echo "Invalid interface ($2)"
-				fi
+			elif [ "$2" == "ip4" ]; then
+				awk 'BEGIN { FS=" " } { printf("%15-s\t%17-s\t%17-s\n",$1,$2,$3); }' <<< "Name IP Mask"
+				for idx in $(seq 0 $[ ${#IFLIST[@]} - 1 ]); do
+					ifconfig ${IFLIST[$idx]} | awk -v ifname="${IFLIST[$idx]}" 'BEGIN {
+						ip = "";
+						mask = "";
+					}
+					/^[ \t]+inet[ \t]+/ {
+						ip = gensub(/^.*inet[ \t]+([^ \t]+)[ \t]+.*$/,"\\1","g",$0);
+						mask = gensub(/^.*netmask[ \t]+([^ \t]+)[ \t]+.*$/,"\\1","g",$0);						
+					}
+					END {
+						printf("%15-s\t%17-s\t%17-s\n",ifname,ip,mask);
+					}'
+				done
+			elif [ "$2" == "ip6" ]; then
+				awk 'BEGIN { FS=" " } { printf("%15-s\t%45-s\t%9-s\t%25-s\n",$1,$2,$3,$4); }' <<< "Name IP Prefix Scope"
+				for idx in $(seq 0 $[ ${#IFLIST} - 1 ]); do
+					ifconfig ${IFLIST[$idx]} | awk -v name="${IFLIST[$idx]}" 'BEGIN {
+						ip6 = "";
+						ip6pfx = "";
+						ip6sc = "";
+					}
+					
+					/^[ \t]+inet6/ {
+						ip6 = gensub(/^.*inet6[ \t]+([^ \t]+)[ \t]+.*$/,"\\1","g",$0);
+						ip6pfx = gensub(/^.*prefixlen[ \t]+([^ \t]+)[ \t]+.*$/,"\\1","g",$0);
+						ip6sc = gensub(/^.*scopeid[ \t]+(.*)$/,"\\1","g",$0);
+					}
+					/^[ \t]+RX packets/ {
+						rxpack = gensub(/^.*packets[ \t]+([0-9]]+)[ \t]+.*$/,"\\1","g",$0);
+						rxbyte = gensub(/^.*bytes[ \t]+([0-9]+)[ \t]+.*$/,"\\1","g",$0);
+					}
+					/^[ \t]+TX packets/ {
+						txpack = gensub(/^.*packets[ \t]+([0-9]+)[ \t]+.*$/,"\\1","g",$0);
+						txbyte = gensub(/^.*bytes[ \t]+([0-9]+)[ \t]+.*$/,"\\1","g",$0);
+					}
+					END {
+						printf("%15-s\t%45-s\t%9-s\t%25-s\n",name,ip6,ip6pfx,ip6sc);
+					}'
+				done
 			else
-				echo "Please specify interface"
+				echo "Invalid argument ($2)"
 			fi
-		elif [ "$1" == "ipv4" ]; then
+		elif [ "$1" == "up" ] || [ "$1" == "down" ] || [ "$1" == "detail" ]; then
 			if [ -n "$2" ]; then
-				_in_array ${IFLIST[@]} <<< "$2"
+				OP="$([[ "$1" == "detail" ]] && echo "" || echo "$1")"
+				
+				_in_str "$IFLIST" <<< "$2"
 	
 				if [ $? -eq 0 ]; then
-					echo "$(_if2cidr $2)"
-				else
-					echo "Invalid interface ($2)"
-				fi
-			else
-				echo "Please specify interface"
-			fi
-		elif [ "$1" == "up" ]; then
-			if [ -n "$2" ]; then
-				_in_array ${IFLIST[@]} <<< "$2"
-	
-				if [ $? -eq 0 ]; then
-					ifconfig $2 up
-				else
-					echo "Invalid interface ($2)"
-				fi
-			else
-				echo "Must specify interface"
-			fi
-		elif [ "$1" == "down" ]; then
-			if [ -n "$2" ]; then
-				_in_array ${IFLIST[@]} <<< "$2"
-	
-				if [ $? -eq 0 ]; then
-					ifconfig $2 down
+					ifconfig $2 $OP
 				else
 					echo "Invalid interface ($2)"
 				fi
@@ -368,50 +436,53 @@ iface() {
 				echo "Must specify interface"
 			fi
 		else
-			echo "Invalid command"
+			echo "Invalid command ($1)"
 		fi
 	else
-		echo "usage: iface <list | up | down | ipv4 | ipv6> [<interface> | all]"
-		echo "      all = only used for list"
+			echo "usage: iface < list [mac | ipv4 | ipv6] | [up | down  detail ] [interface] >"
 	fi
 		
 }
 
 _connection_complete() {
-	OPTIONS=(list test)
-	LISTOPT=(tcp tcp6 udp udp6 multicast)
-	TESTOPT=(destaddr destport timeout)
+	OPTIONS="list test"
+	LISTOPT="tcp tcp6 udp udp6 multicast"
+	TESTOPT="destaddr destport timeout"
 		
 	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
+	LASTCMD2="${COMP_WORDS[$COMP_CWORD-2]}"
 	
-	_in_array ${OPTIONS[@]} <<< "${COMP_WORDS[1]}"
-	if [ $? -eq 0 ]; then
-		if [ "$LASTCMD" == "list" ]; then
-			_in_array ${LISTOPT[@]} <<< "$LASTCMD"
-			if [ $? -eq 0 ]; then
+	_in_str $LISTOPT <<< "$LASTCMD"
+	ISLIST=$?
+	
+	_in_str $TESTOPT <<< "$LASTCMD"
+	ISTEST=$?
+	
+	_in_str $TESTOPT <<< "$LASTCMD2"
+	ISTEST2=$?
+	
+	if [ $ISLIST -eq 0 ] || [ $ISTEST -eq 0 ]; then
+		return 0
+	elif [ $ISTEST2 -eq 0 ]; then
+		COMPREPLY=( $(compgen -W "$TESTOPT" -- "${COMP_WORDS[$COMP_CWORD]}") )
+		return 0
+	else
+		_in_str $OPTIONS <<< "$LASTCMD"
+		if [ $? -eq 0 ]; then
+			if [ "$LASTCMD" == "list" ]; then
+				COMPREPLY=( $(compgen -W "$LISTOPT" -- "${COMP_WORDS[$COMP_CWORD]}") )
+				return 0
+			elif [ "$LASTCMD" == "test" ]; then
+				COMPREPLY=( $(compgen -W "$TESTOPT" -- "${COMP_WORDS[$COMP_CWORD]}") )
 				return 0
 			else
-				COMPREPLY=($(_str_begin_array ${LISTOPT[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-				return 0	
-			fi
-		elif [ "${COMP_WORDS[1]}" == "test" ]; then
-			
-			_in_array ${TESTOPT[@]} <<< "$LASTCMD"
-			if [ $? -eq 0 ]; then
-				return 0
-			else
-				COMPREPLY=($(_str_begin_array ${TESTOPT[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-				return 0
+				return 1
 			fi
 		else
+			COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 			return 0
 		fi
-	else
-		COMPREPLY=($(_str_begin_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))		
-		return 0
 	fi
-	
-	return 0
 }
 
 connection() {
@@ -431,73 +502,82 @@ connection() {
 				netstat -an --inet --inet6
 			fi
 		elif [ "$1" == "test" ]; then
-			grep 'destaddr' <<< "$@" > /dev/null
-			if [ $? -eq 0 ]; then
-				DESTADDR="$(sed 's/^.*destaddr[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
-				
-				CONNTIMEOUT="2"
-				
-				grep 'timeout' <<< "$@" > /dev/null
-				if [ $? -eq 0 ]; then
-					CONNTIMEOUT="$(sed 's/^.*timeout[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
-				fi
-				
-				grep 'destport' <<< "$@" > /dev/null
-				if [ $? -eq 0 ]; then
-					DESTPORT="$(sed 's/^.*destport[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
-					
-					netcat -zn -w $CONNTIMEOUT $DESTADDR $DESTPORT
-					
-					if [ $? -eq 0 ]; then
-						echo "L4 Connection Successful"
-					else
-						echo "L4 Connection Failed"
-					fi
+			DESTADDR=""
+			DESTPORT=""
+			CONNTIMEOUT="2"
+			
+			local idx=2
+			
+			while [ "$idx" -le "$#" ]; do
+				if [ "${@:$idx:1}" == "destaddr" ]; then
+					idx=$[ $idx + 1 ]
+					DESTADDR="${@:$idx:1}"
+					idx=$[ $idx + 1 ]
+				elif [ "${@:$idx:1}" == "destport" ]; then
+					idx=$[ $idx + 1 ]
+					DESTPORT="${@:$idx:1}"
+					idx=$[ $idx + 1 ]
+				elif [ "${@:$idx:1}" == "timeout" ]; then
+					idx=$[ $idx + 1 ]
+					CONNTIMEOUT="${@:$idx:1}"
+					idx=$[ $idx + 1 ]
 				else
-					ping -W $CONNTIMEOUT -c 1 $DESTADDR > /dev/null
-					
-					if [ $? -eq 0 ]; then
-						echo "L3 Connection Successful"
-					else
-						echo "L3 Connection Failed"
-					fi
+					continue
 				fi
+			done
+				
+			if [ -n "$DESTADDR" ] && [ -n "$DESTPORT" ]; then
+					netcat -zn -w $CONNTIMEOUT $DESTADDR $DESTPORT
 			else
-				echo "Must specify address "
+				echo "Missing address and port"
 			fi
 		else
 			echo "Must specify options"
 		fi
 	else
-		echo "usage: connection [list | test] [<list-opts> | <test-opts>]"
-		echo "      list-opts = tcp tcp6 udp udp6 multicast"
-		echo "      test-opts = destaddr destport timeout"	
+		echo "usage: connection < list [tcp | tcp6 | udp | udp6 | multicast] | test destaddr [ip-addr] destport [port] timeout [number] >"
 	fi
 }
 
 _traffic_complete() {
-	OPTIONS=(capture stats)
-	OTHEROPTS=(file interface list)
+	OPTIONS="capture"
+	CAPTUREOPTS="file interface list"
 		
 	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
+	LASTCMD2="${COMP_WORDS[$COMP_CWORD-2]}"
 	
-	_in_array ${OPTIONS[@]} <<< "${COMP_WORDS[1]}"
-	if [ $? -eq 0 ]; then
-		_in_array ${OTHEROPTS[@]} <<< "$LASTCMD"
-		if [ $? -eq 0 ]; then
-			
+	_in_str $CAPTUREOPTS <<< "$LASTCMD"
+	ISCAP=$?
+	
+	_in_str $CAPTUREOPTS <<< "$LASTCMD2"
+	ISCAP2=$?
+	
+	if [ $ISCAP -eq 0 ]; then
+		if [ "$LASTCMD" == "interface" ]; then
+			IFLIST="$(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { if ($1 != "lo") { print $1 } }')"
+				
+			COMPREPLY=( $(compgen -W "$IFLIST" -- "${COMP_WORDS[$COMP_CWORD]}") )
 			return 0
 		else
-			COMPREPLY=($(_str_begin_array ${OTHEROPTS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-			return 0	
+			return 0
 		fi
-
-	else
-		COMPREPLY=($(_str_begin_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))		
+	elif [ $ISCAP2 -eq 0 ]; then
+		COMPREPLY=( $(compgen -W "$CAPTUREOPTS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 		return 0
+	else
+		_in_str	$OPTIONS <<< "$LASTCMD"
+		if [ $? -eq 0 ]; then
+			if [ "$LASTCMD" == "capture" ]; then
+				COMPREPLY=( $(compgen -W "$CAPTUREOPTS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+				return 0
+			else
+				return 1
+			fi
+		else
+			COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+			return 0
+		fi
 	fi
-	
-	return 0
 }
 
 traffic() {
@@ -512,140 +592,142 @@ traffic() {
 					echo "No capture files found"
 				fi
 			else
-				grep 'interface' <<< "$@" > /dev/null && grep 'file' <<< "$@" > /dev/null
-				
-				if [  $? -eq 0 ]; then
-					IFNAME="$(sed 's/^.*interface[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
-					OUTFILE="$(sed 's/^.*file[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
+				IFNAME=""
+				OUTFILE=""
 					
-					tcpdump -i $IFNAME -s 65535 -w /tmp/$OUTFILE.pcap
-
+				while [ "$idx" -le "$#" ]; do
+					if [ "${@:$idx:1}" == "interface" ]; then
+						idx=$[ $idx + 1 ]
+						IFNAME="${@:$idx:1}"
+						idx=$[ $idx + 1 ]
+					elif [ "${@:$idx:1}" == "file" ]; then
+						idx=$[ $idx + 1 ]
+						OUTFILE="${@:$idx:1}"
+						idx=$[ $idx + 1 ]
+					else
+						continue
+					fi
+				done
+				
+				if [ -n "$IFNAME" ] && [ -n "$OUTFILE" ]; then
 					if [ -f $BASEDIR/$OUTFILE.pcap ]; then
 						echo "$OUTFILE already exists."
 						
 						while true; do
 							read -n1 -s -p "[R]ename, [O]verwrite, or [C]ancel" nextop
-
-							if [ $nextop =~ [Rr] ]; then
-								read -p "New filename: " newfile
-								if [ -z "$newfile" ]; then
-									continue
-								else
-									mv /tmp/$OUTFILE.pcap $BASEDIR/$newfile.pcap
+								if [ $nextop =~ [Rr] ]; then
+								read -p "New filename: " OUTFILE
+								if [ -n "$OUTFILE" ]; then
 									break
 								fi
 							elif [ $nextop =~ [Oo] ]; then
-								mv /tmp/$OUTFILE.pcap $BASEDIR/
 								break
 							elif [ $nextop =~ [Cc] ]; then
+								OUTFILE=""
 								break
-							else
-								continue
 							fi
 						done
-					else
-						mv /tmp/$OUTFILE.pcap $BASEDIR/
 					fi
+					
+					tcpdump -i $IFNAME -s 65535 -w $BASEDIR/$OUTFILE.pcap
 				else
 					echo "Must specify interface and output file"
 				fi
-			fi
-		elif [ "$1" == "stats" ]; then
-			grep 'interface' <<< "$@" > /dev/null
-			
-			if [  $? -eq 0 ]; then
-				IFNAME="$(sed 's/^.*interface[ \t]\+\([^ \t]\+\)[ \t]*.*$/\1/g' <<< "$@")"
-			
-				ifconfig $IFNAME | awk '/[RT]X/ { print gensub(/^[ \t]+(.*)$/,"\\1","g",$0); }'
-			else
-				echo "Must specify interface"
 			fi
 		else
 			echo "Invalid option ($1)"
 		fi
 	else
-		echo "usage: traffic [stats | capture] [list] interface <ifname> [file <filename>]"
-		echo "      file = only used for capture"
-		echo "      list = only used for capture"
+		echo "usage: traffic capture [ list | interface <ifname> file <filename> ]"
 	fi
 }
 
 _traceroute_complete() {
-	OPTIONS=(hops addr)
+	OPTIONS="hops addr"
 	
 	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
 	
-	_in_array ${OPTIONS[@]} <<< "$LASTCMD"
+	_in_str $OPTIONS <<< "$LASTCMD"
 	if [ $? -eq 0 ]; then
 		return 0
 	else
-		COMPREPLY=($(_str_begin_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
+		COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 		return 0
 	fi
 }
 
 _lookup_complete() {
-	OPTIONS=(host type)
+	OPTIONS="host type"
 	
 	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
 	
-	_in_array ${OPTIONS[@]} <<< "$LASTCMD"
+	_in_str $OPTIONS <<< "$LASTCMD"
 	if [ $? -eq 0 ]; then
+		if [ "$LASTCMD" == "type" ]; then
+			TYPELIST="A AAAA CNAME NS MX SOA TXT PTR SRV CERT DCHID DNAME"
+			COMPREPLY=( $(compgen -W "$TYPELIST" -- "${COMP_WORDS[$COMP_CWORD]}") )
+		fi
 		return 0
 	else
-		COMPREPLY=($(_str_begin_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
+		COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
 		return 0
 	fi
 }
 
 lookup() {
 	ARGS="$@"
-	HOST="$(sed 's/^.*host[ \t]\+\([^ \t]\+\).*$/\1/g' <<< "$ARGS")"
-	TYPE="$(sed 's/^.*type[ \t]\+\([^ \t]\+\).*$/\1/g' <<< "$ARGS")"
+	LHOST=""
+	TYPE=""
 	
-	if [ "$ARGS" == "$HOST" ] || [ "$ARGS" == "$TYPE" ]; then
-		echo "usage: lookup host <hostname> type <record-type>"
+	while [ "$idx" -le "$#" ]; do
+		if [ "${@:$idx:1}" == "host" ]; then
+			idx=$[ $idx + 1 ]
+			LHOST="${@:$idx:1}"
+			idx=$[ $idx + 1 ]
+		elif [ "${@:$idx:1}" == "type" ]; then
+			idx=$[ $idx + 1 ]
+			TYPE="${@:$idx:1}"
+			idx=$[ $idx + 1 ]
+		else
+			continue
+		fi
+	done
+	
+	if [ -n "$LHOST" ] && [ -n "$TYPE" ]; then
+		dig $HOST $TYPE | _grep -v '^;\|^[ \t]*$'
 	else
-		dig $HOST $TYPE | grep -v '^;\|^[ \t]*$'
+		echo "usage: lookup host <hostname> type <record-type>"
 	fi
 }
 
 trace() {
-	ARGS="$@"
-	HOPS="$(sed 's/^.*hops[ \t]\+\([^ \t]\+\).*$/\1/g' <<< "$ARGS")"
-	HOST="$(sed 's/^.*addr[ \t]\+\([^ \t]\+\).*$/\1/g' <<< "$ARGS")"
+	HOPS=""
+	THOST=""
 	
-	if [ "$ARGS" == "$HOST" ]; then
-		echo "usage: trace hops <hop-count> host <hostname/IP>"
+	local idx=1
+			
+	while [ "$idx" -le "$#" ]; do
+		if [ "${@:$idx:1}" == "addr" ]; then
+			idx=$[ $idx + 1 ]
+			THOST="${@:$idx:1}"
+			idx=$[ $idx + 1 ]
+		elif [ "${@:$idx:1}" == "hops" ]; then
+			idx=$[ $idx + 1 ]
+			HOPS="${@:$idx:1}"
+			idx=$[ $idx + 1 ]
+		else
+			continue
+		fi
+	done
+	
+	if [ -n "$THOST" ]; then
+		traceroute -n $([[ -n "$HOPS" ]] && echo "-m $HOPS") $THOST | _grep '^[ \t]\+[0-9]'
 	else
-		traceroute -n $([[ "$ARGS" == "$HOPS" ]] || echo "-m $HOPS") $HOST | grep '^[ \t]\+[0-9]'
+		echo "usage: trace addr <hostname/IP> [hops <hop-count>]"
 	fi
 }
 
-_clidebug_complete() {
-	OPTIONS=(on off)
-	
-	_in_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD-1]}"
-	if [ $? -eq 0 ]; then
-		return 0
-	else
-		COMPREPLY=($(_str_begin_array ${OPTIONS[@]} <<< "${COMP_WORDS[$COMP_CWORD]}"))
-		return 0	
-	fi
-	
-}
-
-clidebug() {
-	if [ "$1" == "on" ]; then
-		set -x
-	elif [ "$1" == "off" ]; then
-		set +x
-	else
-		echo "usage: clidebug <on | off>"
-	fi
-}
-
-contains() {
+grep() {
 	if [ -n "$1" ]; then
 		grep "$@"
 	else
@@ -667,10 +749,6 @@ column() {
 	else
 		echo "usage: column <number>"
 	fi
-}
-
-admin() {
-	/usr/bin/bash
 }
 
 _build_net_mask() {
@@ -793,18 +871,18 @@ calc() {
 	fi
 }
 
-for THISTAB in ${IPT_TABLES[@]}; do
-	eval "$THISTAB() { _iptcli_backend \$FUNCNAME \$@; }"
-	complete -F _iptcli_complete $THISTAB
-done
+complete -F _iptcli_complete nat
+complete -F _iptcli_complete filter
+complete -F _iptcli_complete mangle
+complete -F _iptcli_complete raw
+complete -F _iptcli_complete security
 
 complete -F _iface_complete iface
 complete -F _connection_complete connection
 complete -F _traffic_complete traffic
 complete -F _traceroute_complete trace
 complete -F _lookup_complete lookup
-complete -F _clidebug_complete clidebug
-complete -W "" contains
+complete -W "" grep
 complete -W "" count
 complete -W "" ping
 complete -W "" column
