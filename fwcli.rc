@@ -2,7 +2,6 @@
 #
 # fwcli.rc - Bash resoruce file to facilitate iptables auto-complete interface
 #
-#
 ##############################################
 
 BASEDIR="$HOME/.fwcli"
@@ -21,10 +20,11 @@ alias cd='cmd_not_found'
 alias pwd='cmd_not_found'
 
 hash -p /usr/bin/mv mv
+hash -p /usr/bin/pidof pidof
+hash -p /usr/bin/rm rm
 hash -p /usr/bin/ls listdir
-hash -p /usr/bin/grep _grep
 hash -p /usr/bin/sed sed
-hash -p /usr/bin/awk awk
+hash -p /usr/bin/gawk awk
 hash -p /usr/bin/cat cat
 hash -p /usr/bin/wc wc
 hash -p /usr/bin/clear clear
@@ -42,6 +42,7 @@ hash -p /usr/bin/bc bc
 hash -p /usr/bin/rev rev
 hash -p /usr/bin/traceroute traceroute
 hash -p /usr/bin/dig dig
+hash -p /usr/sbin/atftpd atftpd
 
 alias help="_iptcli_help"
 
@@ -70,6 +71,8 @@ _iptcli_help() {
 	echo "   trace hops <hop-count> addr <hostname/IP>"
 	echo ""
 	echo "   lookup host <hostname> type <DNS-record-type>"
+	echo ""
+	echo "   file [ list | delete <filename> | tftp ]"
 	echo ""
 	echo "   calc <cidr-notation>"
 	echo "   ping <address>"
@@ -103,7 +106,6 @@ security() {
 _iptcli_backend() {
 	if [ -n "$1" ]; then
 		if [ "$2" == "dump" ]; then
-		#-n "$(/usr/bin/grep "dump[ \t]*$" <<< "$@")" ]; then
 			if [ -z "$3" ]; then
 				iptables-save -t $1 | grep '^-' | sed 's/-A /append /;
 					s/ -I / insert /;
@@ -155,32 +157,6 @@ _iptcli_backend() {
 		echo "  <action> = append|check|delete|insert|replace|list|flush|zero|newchain|delchain|dump*"
 		echo "  <option> = interface|protocol|source|destination|match|destport|jump"
 		echo "  <format> = raw|xml (used for \"dump\" only"
-	fi
-}
-
-_str_begin_array() {
-	NEWAR=()
-	SRCH="$(cat -)"
-	for EL in $@; do
-		if [ -n "$(grep "^$SRCH" <<< "$EL")" ]; then
-			NEWAR+=($EL)
-		fi
-	done
-	echo ${NEWAR[@]}
-}
-
-_in_array() {
-	SRCH="$(cat -)"
-	if [ "$1" == "$SRCH" ]; then
-		return 0
-	else
-		shift
-		AR="$@"
-		if [ -z "$AR" ]; then
-			return 1
-		else
-			_in_array $AR <<< "$SRCH"
-		fi
 	fi
 }
 
@@ -349,7 +325,7 @@ _iface_complete() {
 
 iface() {
 	if [ -n "$1" ]; then
-		IFLIST="$(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { if ($1 != "lo") { print $1 } }')"
+		IFLIST=($(ifconfig | awk 'BEGIN { FS=":" } /^[^ \t]+:.*$/ { if ($1 != "lo") { print $1 } }'))
 		
 		if [ "$1" == "list" ]; then
 			if [ "$2" == "mac" ]; then
@@ -425,7 +401,7 @@ iface() {
 			if [ -n "$2" ]; then
 				OP="$([[ "$1" == "detail" ]] && echo "" || echo "$1")"
 				
-				_in_str "$IFLIST" <<< "$2"
+				_in_str "${IFLIST[@]}" <<< "$2"
 	
 				if [ $? -eq 0 ]; then
 					ifconfig $2 $OP
@@ -610,7 +586,7 @@ traffic() {
 				done
 				
 				if [ -n "$IFNAME" ] && [ -n "$OUTFILE" ]; then
-					if [ -f $BASEDIR/$OUTFILE.pcap ]; then
+					if [ -f ./$OUTFILE.pcap ]; then
 						echo "$OUTFILE already exists."
 						
 						while true; do
@@ -674,6 +650,54 @@ _lookup_complete() {
 	fi
 }
 
+_file_complete() {
+	OPTIONS="list delete tftp"
+	
+	LASTCMD="${COMP_WORDS[$COMP_CWORD-1]}"
+	
+	_in_str $OPTIONS <<< "$LASTCMD"
+	if [ $? -eq 0 ]; then
+		if [ "$LASTCMD" == "delete" ]; then
+			COMPREPLY=( $(compgen -W "$(listdir)" -- "${COMP_WORDS[$COMP_CWORD]}") )
+		elif [ "$LASTCMD" == "list" ]; then
+			_in_str details <<< "$LASTCMD"
+			if [ $? -ne 0 ]; then
+				COMPREPLY=( $(compgen -W "details" -- "${COMP_WORDS[$COMP_CWORD]}") )
+			fi
+		fi
+		return 0
+	else
+		COMPREPLY=( $(compgen -W "$OPTIONS" -- "${COMP_WORDS[$COMP_CWORD]}") )
+		return 0
+	fi
+}
+
+
+file() {
+	if [ -n "$1" ]; then
+		if [ "$1" == "list" ]; then
+			if [ "$2" == "details" ]; then
+				listdir -alF
+			else
+				listdir
+			fi
+		elif [ "$1" == "tftp" ]; then
+			USEPORT="$[ RANDOM % 10000 ]"
+			echo "TFTP listening on port $USEPORT"
+			atftpd --daemon --port $USEPORT $BASEDIR
+			read -n1 -p "Press any key to stop"
+			kill -9 $(pidof atftpd)
+		elif [ "$1" == "delete" ]; then
+			shift
+			rm $@
+		else
+			echo "Invalid command ($1)"
+		fi
+	else
+		echo "usage:  file [ list | delete <filename> | tftp ]"
+	fi
+}
+
 lookup() {
 	ARGS="$@"
 	LHOST=""
@@ -694,7 +718,7 @@ lookup() {
 	done
 	
 	if [ -n "$LHOST" ] && [ -n "$TYPE" ]; then
-		dig $HOST $TYPE | _grep -v '^;\|^[ \t]*$'
+		dig $HOST $TYPE | grep -v '^;\|^[ \t]*$'
 	else
 		echo "usage: lookup host <hostname> type <record-type>"
 	fi
@@ -721,7 +745,7 @@ trace() {
 	done
 	
 	if [ -n "$THOST" ]; then
-		traceroute -n $([[ -n "$HOPS" ]] && echo "-m $HOPS") $THOST | _grep '^[ \t]\+[0-9]'
+		traceroute -n $([[ -n "$HOPS" ]] && echo "-m $HOPS") $THOST | grep '^[ \t]\+[0-9]'
 	else
 		echo "usage: trace addr <hostname/IP> [hops <hop-count>]"
 	fi
@@ -729,7 +753,7 @@ trace() {
 
 grep() {
 	if [ -n "$1" ]; then
-		grep "$@"
+		/usr/bin/grep "$@"
 	else
 		echo "usage: contains <expression>"
 	fi
@@ -882,6 +906,7 @@ complete -F _connection_complete connection
 complete -F _traffic_complete traffic
 complete -F _traceroute_complete trace
 complete -F _lookup_complete lookup
+complete -F _file_complete file
 complete -W "" grep
 complete -W "" count
 complete -W "" ping
